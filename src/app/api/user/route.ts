@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     });
 
     if (exisitngUserByEmail) {
-      return NextResponse.json({ user: null, message: "User with this email already exists" }, { status: 201 });
+      return NextResponse.json({ user: null, message: "User with this email already exists" }, { status: 401 });
     }
 
     const exisitngUserByUsername = await db.user.findUnique({
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     });
 
     if (exisitngUserByUsername) {
-      return NextResponse.json({ user: null, message: "User with this username already exists" }, { status: 201 });
+      return NextResponse.json({ user: null, message: "User with this username already exists" }, { status: 401 });
     }
 
     const hashedPassword = await hash(password, 10);
@@ -29,6 +29,7 @@ export async function POST(req: Request) {
         username,
         email,
         password: hashedPassword,
+        role: "user",
       },
     });
 

@@ -1,9 +1,10 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
+import { GoogleProfile } from "next-auth/providers/google";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { db } from "./db";
-import { compare } from "bcrypt";
+import { compare, hashSync } from "bcrypt";
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(db),
@@ -11,9 +12,10 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
   },
-  // pages: {
-  //   signIn: "/sign-in",
-  // },
+  pages: {
+    signIn: "/sign-in",
+    error: "/error",
+  },
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -48,7 +50,10 @@ export const authOptions: NextAuthOptions = {
         return {
           id: existingUser.id,
           username: existingUser.username,
+          password: existingUser.password,
+          name: existingUser.name,
           email: existingUser.email,
+          role: existingUser.role,
         };
       },
     }),
@@ -56,22 +61,52 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        return {
+        token = {
           ...token,
+          role: user.role,
           username: user.username,
         };
       }
       return token;
     },
     async session({ session, token }) {
-      return {
-        ...session,
-        user: {
+      if (session?.user) {
+        session.user = {
           ...session.user,
+          role: token.role,
           username: token.username,
-        },
-      };
+        };
+      }
       return session;
+    },
+    async signIn(params) {
+      const { user, account, profile } = params;
+      const randomString = Math.random().toString(36).substring(2);
+
+      if (account?.provider === "google" && profile?.email) {
+        // Cari atau buat pengguna berdasarkan email dari profil Google
+        const existingUser = await db.user.findUnique({
+          where: { email: profile.email },
+        });
+
+        if (existingUser) {
+          // Setel peran pengguna sesuai kebutuhan Anda
+          user.role = existingUser.role;
+          user.username = existingUser.username;
+        } else {
+          // Jika pengguna tidak ditemukan, Anda dapat membuatnya dengan kata sandi acak menggunakan bcrypt
+          user.role = "user"; // Ganti dengan peran default yang Anda inginkan
+
+          // Menghasilkan kata sandi acak dengan bcrypt
+          const saltRounds = 10; // Tingkat garam, semakin tinggi semakin aman tetapi memakan waktu lebih lama
+          const randomPassword = Math.random().toString(36).substring(2);
+          const hashedPassword = hashSync(randomPassword, saltRounds);
+
+          user.password = hashedPassword;
+        }
+      }
+
+      return true;
     },
   },
 };
